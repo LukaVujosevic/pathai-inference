@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.npz
+.env
+.venv/
+venv/
+models/
+outputs/
+.git/
+.pytest_cache/
