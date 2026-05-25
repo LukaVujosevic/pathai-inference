@@ -41,7 +41,7 @@ python -m pip install \
   -f https://download.pytorch.org/whl/torch_stable.html
 python -m pip install -r "${INFERENCE_DIR}/requirements.txt"
 python -m pip install -r "${INFERENCE_DIR}/requirements-gpu.txt"
-python -m pip install --force-reinstall "numpy==1.23.5" "scipy==1.10.1"
+python -m pip install "numpy==1.23.5" "scipy==1.10.1"
 python -m pip install gdown
 
 echo "[setup] Preparing ViT-Adapter"

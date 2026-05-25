@@ -29,11 +29,15 @@ class SwiGLUFFN(nn.Module):
     def forward(self, x):
         x12 = self.w12(x)
         x1, x2 = x12.chunk(2, dim=-1)
-        return self.w3(F.silu(x1) * x2)
+        return self.w3(torch.sigmoid(x1) * x1 * x2)
 
 
 class Block(nn.Module):""",
         )
+    source = source.replace(
+        "return self.w3(F.silu(x1) * x2)",
+        "return self.w3(torch.sigmoid(x1) * x1 * x2)",
+    )
 
     source = source.replace(
         "window_size=14, pad_mode='constant', layer_scale=False, with_cp=False):",
@@ -47,10 +51,21 @@ class Block(nn.Module):""",
         "                 with_cp=False, ffn_type='mlp', ffn_bias=True):",
     )
     source = source.replace(
+        "self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)",
+        "if ffn_type in ('swiglu', 'swiglufused', 'swiglualigned'):\n"
+        "            self.mlp = SwiGLUFFN(in_features=dim, hidden_features=mlp_hidden_dim,\n"
+        "                                 act_layer=act_layer, drop=drop, bias=ffn_bias)\n"
+        "        else:\n"
+        "            self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)",
+    )
+    source = source.replace(
         "windowed=window_attn[i], window_size=window_size[i], layer_scale=layer_scale, with_cp=with_cp)",
         "windowed=window_attn[i], window_size=window_size[i], layer_scale=layer_scale, with_cp=with_cp,\n"
         "                ffn_type=ffn_type, ffn_bias=ffn_bias)",
     )
+
+    if "class SwiGLUFFN" not in source or "ffn_type in ('swiglu', 'swiglufused', 'swiglualigned')" not in source:
+        raise SystemExit("Failed to patch ViT-Adapter SwiGLU support.")
 
     vit_path.write_text(source)
     print(f"Patched HIBOU SwiGLU support in {vit_path}")
