@@ -150,6 +150,19 @@ curl http://127.0.0.1:8000/health
 curl -X POST http://127.0.0.1:8000/warmup
 ```
 
+During warmup, the model load must not print a large mismatch where `mlp.w12/w3`
+are unexpected and `mlp.fc1/fc2` are missing. That means ViT-Adapter is still
+using the wrong MLP block for the HIBOU checkpoint.
+
+Verify the HIBOU patch before starting the service:
+
+```bash
+grep -n "SwiGLUFFN\\|self.mlp = SwiGLUFFN\\|ffn_type in" \
+  /workspace/ViT-Adapter/segmentation/mmseg_custom/models/backbones/base/vit.py | head -30
+```
+
+The output must include `self.mlp = SwiGLUFFN`.
+
 Then upload a 1 mpp PNG/JPG ROI to `/workspace/test_roi.png` and run:
 
 ```bash
@@ -166,6 +179,16 @@ python -m json.tool /workspace/result.json | head -80
 
 - If the downloaded checkpoint is 3.9 GB, it is the full checkpoint. The setup script strips it to a 1.3 GB `state_dict` file.
 - If you recreate the pod often, keep `/workspace` as persistent volume so `/workspace/miniconda`, `/workspace/models`, and `/workspace/ViT-Adapter` survive while the pod exists.
+- If reusing an old persistent `/workspace` makes `git pull --ff-only` fail because files were edited on the pod, start from the pushed repo state with:
+
+  ```bash
+  cd /workspace/Inference
+  git fetch origin main
+  git reset --hard origin/main
+  python scripts/patch_vit_adapter_hibou_swiglu.py
+  ```
+
+  Only do this inside `/workspace/Inference`; it discards local edits in that inference clone.
 - Stop the pod when done testing.
 
 ## Hooking Into PathAI

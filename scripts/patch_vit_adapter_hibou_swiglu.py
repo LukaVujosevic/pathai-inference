@@ -64,11 +64,16 @@ class Block(nn.Module):""",
         "                ffn_type=ffn_type, ffn_bias=ffn_bias)",
     )
 
-    if "class SwiGLUFFN" not in source or "ffn_type in ('swiglu', 'swiglufused', 'swiglualigned')" not in source:
+    if (
+        "class SwiGLUFFN" not in source
+        or "ffn_type in ('swiglu', 'swiglufused', 'swiglualigned')" not in source
+        or "self.mlp = SwiGLUFFN" not in source
+    ):
         raise SystemExit("Failed to patch ViT-Adapter SwiGLU support.")
 
     vit_path.write_text(source)
     print(f"Patched HIBOU SwiGLU support in {vit_path}")
+    print("Verified: ViT blocks instantiate SwiGLUFFN for ffn_type='swiglufused'.")
 
 
 if __name__ == "__main__":
