@@ -85,13 +85,15 @@ Invoke-RestMethod http://localhost:8000/classes
 
 ## RunPod Setup
 
-Recommended first RunPod GPU:
+Use the official RunPod PyTorch/Jupyter template. It gives you a working browser terminal and file browser; the setup script installs the old Python stack in a separate Miniconda env.
+
+Recommended GPU:
 
 ```text
-A100, A40, A5000, or A6000
+A40, A5000, A6000, A100
 ```
 
-Avoid making RTX 4090 your first attempt for this old stack. The training environment used:
+The tested pod used an A40. Avoid making RTX 4090/5090 your first attempt for this old stack. The training environment used:
 
 ```text
 Python 3.9
@@ -103,73 +105,30 @@ MMDetection 2.22.0
 ViT-Adapter commit fd64a5190f9f4530e8e5961cc87b2a3ad591190b
 ```
 
-### Option A: Build Docker Image
+### Start A Pod
 
-Build this image somewhere with Docker, preferably not your low-memory laptop:
+Create a pod from RunPod's official PyTorch/Jupyter template and expose:
 
-```bash
-cd /workspace/Inference
-docker build --build-arg INSTALL_GPU_DEPS=true -t pathai-inference:512 .
+```text
+HTTP ports: 8888,8000
+Volume mount: /workspace
+Volume disk: 40 GB or more
 ```
 
-If pushing to a registry:
+Open Jupyter, then open a terminal.
 
-```bash
-docker tag pathai-inference:512 ghcr.io/YOUR_USER/pathai-inference:512
-docker push ghcr.io/YOUR_USER/pathai-inference:512
-```
-
-The Dockerfile uses a CUDA devel image because ViT-Adapter CUDA ops need to compile.
-
-### Option B: Install Inside A RunPod PyTorch Pod
-
-Start a RunPod pod from a PyTorch CUDA 11.1/devel-style image, then run:
+### One-Command Setup
 
 ```bash
 cd /workspace
-git clone https://github.com/YOUR_USER/Inference.git Inference
+git clone https://github.com/LukaVujosevic/pathai-inference.git Inference
 cd /workspace/Inference
-python -m pip install --upgrade pip wheel "setuptools<81"
-python -m pip install -r requirements.txt
-python -m pip install -r requirements-gpu.txt
-```
 
-If this folder is not in a GitHub repo yet, upload/copy it to `/workspace/Inference`.
-
-### Prepare ViT-Adapter And Config
-
-From inside RunPod:
-
-```bash
-cd /workspace/Inference
+export GDRIVE_CHECKPOINT_URL="https://drive.google.com/file/d/1pMOWqBytVE7TYmLkANg3tqT8tunPyZwF/view?usp=drive_link"
 bash scripts/runpod_setup_512.sh
 ```
 
-That script:
-
-- clones `PathTests`
-- checks out `leonardo-cleanup`
-- clones `ViT-Adapter`
-- checks out commit `fd64a5190f9f4530e8e5961cc87b2a3ad591190b`
-- copies the recovered 512 config into `ViT-Adapter/segmentation/configs/pathtests`
-- compiles `ViT-Adapter/segmentation/ops`
-- writes `.env.runpod.512`
-
-### Upload Checkpoint
-
-Put the original checkpoint at:
-
-```text
-/workspace/models/best_mean_micro_dice_1_4_iter_8000.pth
-```
-
-Then strip optimizer state:
-
-```bash
-python /workspace/Inference/scripts/strip_checkpoint.py \
-  /workspace/models/best_mean_micro_dice_1_4_iter_8000.pth \
-  /workspace/models/best_mean_micro_dice_1_4_iter_8000.state_dict.pth
-```
+The script installs Miniconda to `/workspace/miniconda`, creates `pathai`, installs PyTorch/MMCV/MMSeg, clones and patches ViT-Adapter for HIBOU SwiGLU, downloads the checkpoint, strips optimizer state, builds CUDA ops, and writes `.env.runpod.512`.
 
 ### Start Service
 
@@ -177,34 +136,37 @@ python /workspace/Inference/scripts/strip_checkpoint.py \
 bash /workspace/Inference/scripts/runpod_start_512.sh
 ```
 
-The service listens on:
-
-```text
-0.0.0.0:8000
-```
+The service listens on `0.0.0.0:8000`. Keep this terminal running.
 
 ### Smoke Test
 
-Health only:
+Open another Jupyter terminal:
 
 ```bash
-bash /workspace/Inference/scripts/runpod_smoke_512.sh
+source /workspace/miniconda/etc/profile.d/conda.sh
+conda activate pathai
+
+curl http://127.0.0.1:8000/health
+curl -X POST http://127.0.0.1:8000/warmup
 ```
 
-Health plus one PNG ROI:
-
-```bash
-bash /workspace/Inference/scripts/runpod_smoke_512.sh /workspace/test_roi.png
-```
-
-Or directly:
+Then upload a 1 mpp PNG/JPG ROI to `/workspace/test_roi.png` and run:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/segment \
   -F "image=@/workspace/test_roi.png" \
   -F "mpp=1.0" \
-  -F "image_id=smoke" | python -m json.tool
+  -F "image_id=smoke" \
+  -o /workspace/result.json
+
+python -m json.tool /workspace/result.json | head -80
 ```
+
+### Notes
+
+- If the downloaded checkpoint is 3.9 GB, it is the full checkpoint. The setup script strips it to a 1.3 GB `state_dict` file.
+- If you recreate the pod often, keep `/workspace` as persistent volume so `/workspace/miniconda`, `/workspace/models`, and `/workspace/ViT-Adapter` survive while the pod exists.
+- Stop the pod when done testing.
 
 ## Hooking Into PathAI
 
@@ -217,13 +179,13 @@ Once RunPod exposes the service URL, set the .NET backend:
 }
 ```
 
-The current PathAI backend still needs to be updated from the old `/segment/tumor`, `/segment/glands`, `/segment/nuclei` calls to one model-native call:
+The PathAI backend calls one model-native endpoint:
 
 ```text
 POST /segment
 ```
 
-Then the frontend should display layers by returned `class`/`class_id`:
+The frontend displays returned classes:
 
 ```text
 tumor_gland

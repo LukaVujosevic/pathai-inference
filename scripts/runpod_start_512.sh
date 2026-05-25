@@ -4,10 +4,17 @@ set -euo pipefail
 WORKSPACE="${WORKSPACE:-/workspace}"
 INFERENCE_DIR="${INFERENCE_DIR:-${WORKSPACE}/Inference}"
 ENV_FILE="${ENV_FILE:-${INFERENCE_DIR}/.env.runpod.512}"
+CONDA_DIR="${CONDA_DIR:-${WORKSPACE}/miniconda}"
+CONDA_ENV="${CONDA_ENV:-pathai}"
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo "Missing ${ENV_FILE}. Run scripts/runpod_setup_512.sh first." >&2
   exit 1
+fi
+
+if [[ -f "${CONDA_DIR}/etc/profile.d/conda.sh" ]]; then
+  source "${CONDA_DIR}/etc/profile.d/conda.sh"
+  conda activate "${CONDA_ENV}"
 fi
 
 set -a

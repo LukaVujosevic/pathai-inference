@@ -105,6 +105,7 @@ class MmsegSegmenter(BaseSegmenter):
             cfg = Config.fromfile(settings.model_config_path)
             if settings.disable_pretrained:
                 disable_pretrained_references(cfg)
+            strip_training_only_transforms(cfg)
 
             self._model = init_segmentor(
                 cfg,
@@ -181,6 +182,31 @@ def disable_pretrained_references(cfg: Any) -> None:
                 model.pretrained = None
             if hasattr(model, "backbone") and hasattr(model.backbone, "pretrained"):
                 model.backbone.pretrained = None
+
+
+def strip_training_only_transforms(cfg: Any) -> None:
+    """Remove custom train-time transforms that are not needed for image inference."""
+    blocked = {"MapIgnoreToBackground", "ToMask"}
+
+    def clean(value: Any) -> Any:
+        if isinstance(value, list):
+            cleaned = []
+            for item in value:
+                if isinstance(item, dict) and item.get("type") in blocked:
+                    continue
+                cleaned.append(clean(item))
+            return cleaned
+        if isinstance(value, dict):
+            for key, item in list(value.items()):
+                value[key] = clean(item)
+        return value
+
+    if hasattr(cfg, "data"):
+        cfg.data = clean(cfg.data)
+    if hasattr(cfg, "test_pipeline"):
+        cfg.test_pipeline = clean(cfg.test_pipeline)
+    if hasattr(cfg, "train_pipeline"):
+        cfg.train_pipeline = clean(cfg.train_pipeline)
 
 
 _segmenter: Optional[BaseSegmenter] = None
